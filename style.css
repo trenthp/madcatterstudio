@@ -190,7 +190,7 @@ body {
     opacity: 0.9;
 }
 
-#floating-bar-cta {
+#floating-bar-enter {
     background: #fff;
     color: #000;
     border: none;
@@ -205,9 +205,49 @@ body {
     transition: background 0.2s ease, transform 0.15s ease;
 }
 
-#floating-bar-cta:hover {
+#floating-bar-enter:hover {
     background: rgba(255, 255, 255, 0.85);
     transform: scale(1.04);
+}
+
+#floating-bar-controls {
+    display: none;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+#floating-bar-controls.active {
+    display: flex;
+}
+
+#floating-bar-enter.hidden {
+    display: none;
+}
+
+.bar-icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.35rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease;
+}
+
+.bar-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.bar-icon {
+    width: 22px;
+    height: 22px;
+    filter: brightness(0) invert(1);
+}
+
+.bar-icon.hidden {
+    display: none;
 }
 
 #scroll-spacer {

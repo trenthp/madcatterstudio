@@ -143,9 +143,210 @@ const signBands = Array.from(signElements).map((el, i) => {
 
 // ── Floating bottom bar ──────────────────────────────────────────────
 const floatingBar = document.getElementById('floating-bar');
-document.getElementById('floating-bar-cta').addEventListener('click', () => {
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+const enterBtn = document.getElementById('floating-bar-enter');
+const controlsEl = document.getElementById('floating-bar-controls');
+const pauseBtn = document.getElementById('floating-bar-pause');
+const skipBtn = document.getElementById('floating-bar-skip');
+const pauseIcon = pauseBtn.querySelector('.pause-icon');
+const playIcon = pauseBtn.querySelector('.play-icon');
+
+let autoScrollId = null;
+
+// Piecewise easing: fast ramp-up → slow cruise through signs → fast finish
+// t = normalised time [0,1] → returns normalised scroll position [0,1]
+const lastBandStart = signBands[signBands.length - 1].bandStart;
+const signEndFraction = signBands[signBands.length - 1].bandEnd;
+
+// Build a C1-continuous piecewise easing (no speed jumps).
+const _rampEnd   = 0.02;
+const _cruiseEnd = 0.70;
+const _rampDist  = 0.03;
+
+const _cruiseV = (lastBandStart - _rampDist) / (_cruiseEnd - _rampEnd);
+const _rampA = _cruiseV * _rampEnd / 2;
+const _accelLen  = 1 - _cruiseEnd;
+const _accelV0   = _cruiseV * _accelLen;
+const _accelDist = 1 - lastBandStart;
+
+const customEase = (t) => {
+    if (t <= _rampEnd) {
+        const r = t / _rampEnd;
+        return _rampA * r * r;
+    } else if (t <= _cruiseEnd) {
+        return _rampA + _cruiseV * (t - _rampEnd);
+    } else {
+        const r = (t - _cruiseEnd) / _accelLen;
+        return lastBandStart + _accelV0 * r + (_accelDist - _accelV0) * r * r;
+    }
+};
+
+// ── Auto-scroll state (supports pause / resume) ─────────────────────
+let scrollAnim = null; // { start, distance, duration, elapsed, easeFn }
+
+const stopAutoScroll = () => {
+    if (autoScrollId) {
+        cancelAnimationFrame(autoScrollId);
+        autoScrollId = null;
+    }
+};
+
+const runAutoScroll = () => {
+    if (!scrollAnim) return;
+    const anim = scrollAnim;
+    const resumeTime = performance.now();
+
+    const step = (now) => {
+        const dt = now - resumeTime;
+        anim.elapsed += dt;
+        // Re-anchor resumeTime each frame so pause/resume stays accurate
+        const t = Math.min(anim.elapsed / anim.duration, 1);
+        window.scrollTo(0, anim.start + anim.distance * anim.easeFn(t));
+        if (t < 1) {
+            anim.elapsed = anim.elapsed; // already updated above
+            const prevNow = now;
+            autoScrollId = requestAnimationFrame((n) => {
+                // Compute dt from *this* frame's now
+                anim.elapsed -= dt; // undo the += above
+                anim.elapsed += (n - resumeTime);
+                const t2 = Math.min(anim.elapsed / anim.duration, 1);
+                window.scrollTo(0, anim.start + anim.distance * anim.easeFn(t2));
+                if (t2 < 1) {
+                    // Continue recursively but simpler — switch to a clean loop
+                } else {
+                    autoScrollId = null;
+                    scrollAnim = null;
+                    showEnterBtn();
+                }
+            });
+        } else {
+            autoScrollId = null;
+            scrollAnim = null;
+            showEnterBtn();
+        }
+    };
+    autoScrollId = requestAnimationFrame(step);
+};
+
+// Simpler approach: track elapsedAtPause, use a single startTime offset
+const startAutoScroll = (target, duration, easeFn) => {
+    stopAutoScroll();
+    scrollAnim = {
+        start: window.scrollY,
+        distance: target - window.scrollY,
+        duration,
+        easeFn,
+        elapsedAtPause: 0,
+        timeOrigin: performance.now()
+    };
+    _runLoop();
+};
+
+const _runLoop = () => {
+    if (!scrollAnim) return;
+    const anim = scrollAnim;
+
+    const step = (now) => {
+        const elapsed = (now - anim.timeOrigin) + anim.elapsedAtPause;
+        const t = Math.min(elapsed / anim.duration, 1);
+        window.scrollTo(0, anim.start + anim.distance * anim.easeFn(t));
+        if (t < 1) {
+            autoScrollId = requestAnimationFrame(step);
+        } else {
+            autoScrollId = null;
+            scrollAnim = null;
+            showEnterBtn();
+        }
+    };
+    autoScrollId = requestAnimationFrame(step);
+};
+
+const pauseAutoScroll = () => {
+    if (!scrollAnim) return;
+    const now = performance.now();
+    scrollAnim.elapsedAtPause += (now - scrollAnim.timeOrigin);
+    stopAutoScroll();
+};
+
+const resumeAutoScroll = () => {
+    if (!scrollAnim) return;
+    scrollAnim.timeOrigin = performance.now();
+    _runLoop();
+};
+
+// ── UI state helpers ─────────────────────────────────────────────────
+let isPaused = false;
+
+const showControls = () => {
+    enterBtn.classList.add('hidden');
+    controlsEl.classList.add('active');
+    isPaused = false;
+    pauseIcon.classList.remove('hidden');
+    playIcon.classList.add('hidden');
+};
+
+const showEnterBtn = () => {
+    enterBtn.classList.remove('hidden');
+    controlsEl.classList.remove('active');
+    isPaused = false;
+};
+
+// ── Button handlers ──────────────────────────────────────────────────
+enterBtn.addEventListener('click', () => {
+    showControls();
+    startAutoScroll(document.body.scrollHeight, 22000, customEase);
 });
+
+pauseBtn.addEventListener('click', () => {
+    if (!isPaused) {
+        pauseAutoScroll();
+        isPaused = true;
+        pauseIcon.classList.add('hidden');
+        playIcon.classList.remove('hidden');
+    } else {
+        resumeAutoScroll();
+        isPaused = false;
+        pauseIcon.classList.remove('hidden');
+        playIcon.classList.add('hidden');
+    }
+});
+
+skipBtn.addEventListener('click', () => {
+    stopAutoScroll();
+    scrollAnim = null;
+    // Quick skip to end
+    const skipStart = window.scrollY;
+    const skipTarget = document.body.scrollHeight;
+    const skipDist = skipTarget - skipStart;
+    const skipDuration = 3500;
+    const skipOrigin = performance.now();
+
+    const step = (now) => {
+        const t = Math.min((now - skipOrigin) / skipDuration, 1);
+        // Gentle ease-in-out with a long, soft landing
+        const ease = t < 0.3
+            ? (t / 0.3) * (t / 0.3) * 0.3
+            : 0.3 + 0.7 * (1 - Math.pow(1 - (t - 0.3) / 0.7, 3));
+        window.scrollTo(0, skipStart + skipDist * ease);
+        if (t < 1) {
+            autoScrollId = requestAnimationFrame(step);
+        } else {
+            autoScrollId = null;
+            showEnterBtn();
+        }
+    };
+    autoScrollId = requestAnimationFrame(step);
+});
+
+// Stop auto-scroll if the user scrolls manually, revert to Enter button
+const cancelAndReset = () => {
+    if (autoScrollId) {
+        stopAutoScroll();
+        scrollAnim = null;
+        showEnterBtn();
+    }
+};
+window.addEventListener('wheel', cancelAndReset);
+window.addEventListener('touchstart', cancelAndReset);
 
 // ── HTML Logo + CTA Overlay ───────────────────────────────────────────
 const logoOverlay = document.getElementById('logo-overlay');
@@ -155,24 +356,61 @@ const ctaRow = document.getElementById('cta-row');
 const contactLink = logoOverlay.querySelector('.contact-link');
 
 // ── Starfield ─────────────────────────────────────────────────────────
+const starCount = 5000;
 const createStarfield = () => {
     const starGeometry = new THREE.BufferGeometry();
-    const starCount = 1000;
     const positions = new Float32Array(starCount * 3);
+    const sizes = new Float32Array(starCount);
+    const twinkleSeeds = new Float32Array(starCount); // random phase offset per star
 
-    for (let i = 0; i < starCount * 3; i += 3) {
-        positions[i] = (Math.random() - 0.5) * 20;
-        positions[i + 1] = (Math.random() - 0.5) * 20;
-        positions[i + 2] = (Math.random() - 0.5) * 20;
+    for (let i = 0; i < starCount; i++) {
+        positions[i * 3]     = (Math.random() - 0.5) * 30;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 30;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 30;
+        sizes[i] = 0.15 + Math.random() * 0.5; // varying base sizes
+        twinkleSeeds[i] = Math.random() * Math.PI * 2;
     }
 
     starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    starGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    starGeometry.setAttribute('twinkleSeed', new THREE.BufferAttribute(twinkleSeeds, 1));
 
-    const starMaterial = new THREE.PointsMaterial({
-        color: 0xffffff,
-        size: 0.05,
+    const starMaterial = new THREE.ShaderMaterial({
         transparent: true,
-        opacity: 0
+        depthWrite: false,
+        uniforms: {
+            uOpacity: { value: 0 },
+            uTime: { value: 0 },
+            uPixelRatio: { value: renderer.getPixelRatio() }
+        },
+        vertexShader: `
+            attribute float size;
+            attribute float twinkleSeed;
+            uniform float uTime;
+            uniform float uPixelRatio;
+            varying float vTwinkle;
+            void main() {
+                vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+                // Each star twinkles at its own phase and speed
+                float speed = 1.2 + twinkleSeed * 0.6;
+                // Only ~30% of stars twinkle
+                float doTwinkle = step(4.4, twinkleSeed * 6.28);
+                vTwinkle = mix(1.0, 0.85 + 0.15 * sin(uTime * speed + twinkleSeed * 6.28), doTwinkle);
+                gl_PointSize = size * uPixelRatio * (200.0 / max(-mvPos.z, 0.1));
+                gl_Position = projectionMatrix * mvPos;
+            }
+        `,
+        fragmentShader: `
+            uniform float uOpacity;
+            varying float vTwinkle;
+            void main() {
+                // Soft circular point
+                float d = length(gl_PointCoord - 0.5);
+                if (d > 0.5) discard;
+                float alpha = smoothstep(0.5, 0.3, d);
+                gl_FragColor = vec4(1.0, 1.0, 1.0, alpha * uOpacity * vTwinkle);
+            }
+        `
     });
 
     return new THREE.Points(starGeometry, starMaterial);
@@ -235,19 +473,21 @@ const updateScene = () => {
         floatingBar.style.pointerEvents = 'auto';
     }
 
-    // ── Starfield — appears at 55%, full by 75% ──
-    if (scrollProgress >= 0.55) {
-        const starProgress = THREE.MathUtils.clamp(
-            (scrollProgress - 0.55) / 0.2, 0, 1
+    // ── Starfield — appears at 70%, full by 90%, eases to a stop ──
+    if (scrollProgress >= 0.70) {
+        const raw = THREE.MathUtils.clamp(
+            (scrollProgress - 0.70) / 0.20, 0, 1
         );
-        starfield.material.opacity = starProgress;
+        // Ease-out cubic so expansion decelerates smoothly
+        const starProgress = 1 - Math.pow(1 - raw, 3);
+        starfield.material.uniforms.uOpacity.value = starProgress;
 
         const scale = 0.01 + (starProgress * 8);
         starfield.scale.set(scale, scale, scale);
 
         starfield.position.z = -totalTunnelDepth - 10;
     } else {
-        starfield.material.opacity = 0;
+        starfield.material.uniforms.uOpacity.value = 0;
     }
 
     // ── Fade out tunnel wireframes 60-85% ──
@@ -350,8 +590,10 @@ if (window.visualViewport) {
 }
 
 // Animation loop
+const clock = new THREE.Clock();
 const animate = () => {
     requestAnimationFrame(animate);
+    starfield.material.uniforms.uTime.value = clock.getElapsedTime();
     renderer.render(scene, camera);
 };
 
