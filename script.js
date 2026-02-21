@@ -328,12 +328,26 @@ window.addEventListener('scroll', syncScroll);
 // Sync on load so a mid-page refresh shows the correct state
 syncScroll();
 
-// Handle window resize
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
+// Handle window resize (use visualViewport on mobile for accurate size)
+const getViewportSize = () => {
+    const vv = window.visualViewport;
+    return {
+        width: vv ? vv.width : window.innerWidth,
+        height: vv ? vv.height : window.innerHeight
+    };
+};
+
+const onResize = () => {
+    const { width, height } = getViewportSize();
+    camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
+    renderer.setSize(width, height);
+};
+
+window.addEventListener('resize', onResize);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', onResize);
+}
 
 // Animation loop
 const animate = () => {
