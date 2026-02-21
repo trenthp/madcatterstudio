@@ -339,14 +339,18 @@ skipBtn.addEventListener('click', () => {
 
 // Stop auto-scroll if the user scrolls manually, revert to Enter button
 const cancelAndReset = () => {
-    if (autoScrollId) {
+    if (autoScrollId || scrollAnim) {
         stopAutoScroll();
         scrollAnim = null;
         showEnterBtn();
     }
 };
 window.addEventListener('wheel', cancelAndReset);
-window.addEventListener('touchstart', cancelAndReset);
+window.addEventListener('touchstart', (e) => {
+    // Don't cancel when tapping the floating bar controls
+    if (floatingBar.contains(e.target)) return;
+    cancelAndReset();
+});
 
 // ── HTML Logo + CTA Overlay ───────────────────────────────────────────
 const logoOverlay = document.getElementById('logo-overlay');
