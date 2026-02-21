@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mad Catter Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans+Condensed:ital,wght@0,1..1000;1,1..1000&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <!-- Narrative signs — fixed overlay on top of canvas -->
+    <div id="signs">
+        <div class="sign visible" data-sign="0">Everyone's saying AI changes everything.</div>
+        <div class="sign" data-sign="1">Fewer are telling you what to actually do about it.</div>
+        <div class="sign" data-sign="2">The question was never whether to move.</div>
+        <div class="sign" data-sign="3">It's whether you're building the right thing.</div>
+        <div class="sign" data-sign="4">Some agencies hand you a map.<br>We help you want the right destination.</div>
+        <div class="sign" data-sign="5">Then we build the path.<br>Then we ship it.</div>
+    </div>
+
+    <!-- Logo + CTA overlay — fades in during scroll, stays fixed -->
+    <div id="logo-overlay">
+        <img src="img/logo_madCatterStudio.svg" alt="Mad Catter Studio">
+        <p id="cta-tagline">Strategy. Design. Code.</p>
+        <div id="cta-row">
+            <div class="cta-item">
+                <h2>Build</h2>
+                <p>Products from zero, or the next version of yours.</p>
+            </div>
+            <div class="cta-item">
+                <h2>Fix</h2>
+                <p>Fix what's broken: the product, the process, or both.</p>
+            </div>
+            <div class="cta-item">
+                <h2>Teach</h2>
+                <p>How to work this way yourself or train a team.</p>
+            </div>
+        </div>
+        <a href="mailto:hello@madcatterstudio.com" class="contact-link">Get in touch</a>
+    </div>
+
+    <!-- Floating bottom bar — visible during signs phase -->
+    <div id="floating-bar">
+        <img src="img/logo_madCatterStudio.svg" alt="Mad Catter Studio" class="floating-bar-logo">
+        <button id="floating-bar-cta">Enter</button>
+    </div>
+
+    <!-- Spacer to enable scrolling -->
+    <div id="scroll-spacer"></div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
