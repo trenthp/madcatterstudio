@@ -356,28 +356,32 @@ window.addEventListener('touchstart', (e) => {
 const logoOverlay = document.getElementById('logo-overlay');
 const logoImg = logoOverlay.querySelector('img');
 const ctaTagline = document.getElementById('cta-tagline');
+const ctaSubline = document.getElementById('cta-subline');
 const ctaRow = document.getElementById('cta-row');
 const contactLink = logoOverlay.querySelector('.contact-link');
 
 // ── Starfield ─────────────────────────────────────────────────────────
-const starCount = 5000;
+const starCount = 8000;
 const createStarfield = () => {
     const starGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(starCount * 3);
     const sizes = new Float32Array(starCount);
-    const twinkleSeeds = new Float32Array(starCount); // random phase offset per star
+    const twinkleSeeds = new Float32Array(starCount);
+    const baseAlphas = new Float32Array(starCount);
 
     for (let i = 0; i < starCount; i++) {
         positions[i * 3]     = (Math.random() - 0.5) * 30;
         positions[i * 3 + 1] = (Math.random() - 0.5) * 30;
         positions[i * 3 + 2] = (Math.random() - 0.5) * 30;
-        sizes[i] = 0.15 + Math.random() * 0.5; // varying base sizes
+        sizes[i] = 0.15 + Math.random() * 0.5;
         twinkleSeeds[i] = Math.random() * Math.PI * 2;
+        baseAlphas[i] = 0.15 + Math.random() * 0.85; // varying transparency
     }
 
     starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     starGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
     starGeometry.setAttribute('twinkleSeed', new THREE.BufferAttribute(twinkleSeeds, 1));
+    starGeometry.setAttribute('baseAlpha', new THREE.BufferAttribute(baseAlphas, 1));
 
     const starMaterial = new THREE.ShaderMaterial({
         transparent: true,
@@ -390,29 +394,54 @@ const createStarfield = () => {
         vertexShader: `
             attribute float size;
             attribute float twinkleSeed;
+            attribute float baseAlpha;
             uniform float uTime;
             uniform float uPixelRatio;
             varying float vTwinkle;
+            varying float vShape;
+            varying float vBaseAlpha;
             void main() {
                 vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-                // Each star twinkles at its own phase and speed
-                float speed = 1.2 + twinkleSeed * 0.6;
-                // Only ~30% of stars twinkle
-                float doTwinkle = step(4.4, twinkleSeed * 6.28);
-                vTwinkle = mix(1.0, 0.85 + 0.15 * sin(uTime * speed + twinkleSeed * 6.28), doTwinkle);
-                gl_PointSize = size * uPixelRatio * (200.0 / max(-mvPos.z, 0.1));
+                vBaseAlpha = baseAlpha;
+                // ~60% are four-pointed stars
+                vShape = step(0.4, fract(twinkleSeed * 3.17));
+                // Only circular stars can twinkle (~15% of all stars)
+                float isCircle = 1.0 - vShape;
+                float speed = 0.3 + twinkleSeed * 0.2;
+                float doTwinkle = isCircle * step(4.4, twinkleSeed * 6.28);
+                vTwinkle = mix(1.0, 0.3 + 0.7 * sin(uTime * speed + twinkleSeed * 6.28), doTwinkle);
+                float sizeScale = mix(1.0, 1.4, vShape);
+                gl_PointSize = size * sizeScale * uPixelRatio * (200.0 / max(-mvPos.z, 0.1));
                 gl_Position = projectionMatrix * mvPos;
             }
         `,
         fragmentShader: `
             uniform float uOpacity;
             varying float vTwinkle;
+            varying float vShape;
+            varying float vBaseAlpha;
             void main() {
-                // Soft circular point
-                float d = length(gl_PointCoord - 0.5);
-                if (d > 0.5) discard;
-                float alpha = smoothstep(0.5, 0.3, d);
-                gl_FragColor = vec4(1.0, 1.0, 1.0, alpha * uOpacity * vTwinkle);
+                vec2 uv = gl_PointCoord - 0.5;
+                float alpha;
+                if (vShape > 0.5) {
+                    // Four-pointed star, taller on vertical axis
+                    float ax = abs(uv.x);
+                    float ay = abs(uv.y);
+                    // Horizontal spike (narrow)
+                    float spikeH = smoothstep(0.5, 0.0, ax) * smoothstep(0.08, 0.0, ay);
+                    // Vertical spike (narrow, longer reach)
+                    float spikeV = smoothstep(0.5, 0.0, ay) * smoothstep(0.06, 0.0, ax);
+                    // Bright core
+                    float core = smoothstep(0.12, 0.0, length(uv));
+                    alpha = max(max(spikeH, spikeV), core);
+                    if (alpha < 0.01) discard;
+                } else {
+                    // Soft circular point
+                    float d = length(uv);
+                    if (d > 0.5) discard;
+                    alpha = smoothstep(0.5, 0.3, d);
+                }
+                gl_FragColor = vec4(1.0, 1.0, 1.0, alpha * uOpacity * vTwinkle * vBaseAlpha);
             }
         `
     });
@@ -523,9 +552,24 @@ const updateScene = () => {
         // Drop from above: starts high, eases down to 0 (natural position)
         const yShift = (1 - moveIn) * -60;
         ctaTagline.style.transform = `translateY(${yShift}px)`;
+        // Subline handled separately below
     } else {
         ctaTagline.style.opacity = 0;
         ctaTagline.style.transform = 'translateY(-60px)';
+    }
+
+    // ── Subline fades in during logo phase ──
+    const sublineStart = logoStart + 0.05;
+    if (scrollProgress >= sublineStart) {
+        const sublineFadeIn = THREE.MathUtils.clamp(
+            (scrollProgress - sublineStart) / 0.15, 0, 1
+        );
+        ctaSubline.style.opacity = sublineFadeIn;
+        const sublineYShift = (1 - sublineFadeIn) * -30;
+        ctaSubline.style.transform = `translateY(${sublineYShift}px)`;
+    } else {
+        ctaSubline.style.opacity = 0;
+        ctaSubline.style.transform = 'translateY(-30px)';
     }
 
     // ── Logo fade and scale (65-95%), CTA appears once logo settles ──
